@@ -49,6 +49,34 @@ object Form1: TForm1
     Height = 13
     Caption = #1047#1085#1072#1095#1077#1085#1080#1077' '#1094#1077#1083#1077#1074#1086#1081' '#1092#1091#1085#1082#1094#1080#1080':'
   end
+  object Label6: TLabel
+    Left = 304
+    Top = 112
+    Width = 273
+    Height = 13
+    Caption = #1055#1088#1086#1074#1077#1076#1077#1085#1072' '#1082#1086#1088#1088#1077#1082#1094#1080#1103' '#1080#1089#1093#1086#1076#1085#1099#1093' '#1086#1075#1088#1072#1085#1080#1095#1077#1085#1080#1081' '#1074' '#1089#1074#1103#1079#1080
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clGreen
+    Font.Height = -11
+    Font.Name = 'MS Sans Serif'
+    Font.Style = []
+    ParentFont = False
+    Visible = False
+  end
+  object Label7: TLabel
+    Left = 304
+    Top = 128
+    Width = 254
+    Height = 13
+    Caption = #1089' '#1085#1072#1083#1080#1095#1080#1077#1084' '#1086#1090#1088#1080#1094#1072#1090#1077#1083#1100#1085#1099#1093' '#1089#1074#1086#1073#1086#1076#1085#1099#1093' '#1101#1083#1077#1084#1077#1085#1090#1086#1074
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clGreen
+    Font.Height = -11
+    Font.Name = 'MS Sans Serif'
+    Font.Style = []
+    ParentFont = False
+    Visible = False
+  end
   object SpinEdit1: TSpinEdit
     Left = 144
     Top = 8

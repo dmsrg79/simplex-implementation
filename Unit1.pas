@@ -23,6 +23,8 @@ type
     ComboBox1: TComboBox;
     ComboBox2: TComboBox;
     ComboBox3: TComboBox;
+    Label6: TLabel;
+    Label7: TLabel;
     procedure SpinEdit1Change(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure SpinEdit2Change(Sender: TObject);
