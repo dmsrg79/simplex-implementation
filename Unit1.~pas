@@ -1,0 +1,524 @@
+unit Unit1;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, Grids, StdCtrls, Spin;
+
+type
+  TForm1 = class(TForm)
+    Label1: TLabel;
+    Label2: TLabel;
+    SpinEdit1: TSpinEdit;
+    StringGrid1: TStringGrid;
+    Label3: TLabel;
+    SpinEdit2: TSpinEdit;
+    StringGrid2: TStringGrid;
+    StringGrid3: TStringGrid;
+    Label4: TLabel;
+    Button1: TButton;
+    Label5: TLabel;
+    Edit1: TEdit;
+    ComboBox1: TComboBox;
+    ComboBox2: TComboBox;
+    ComboBox3: TComboBox;
+    Label6: TLabel;
+    Label7: TLabel;
+    procedure SpinEdit1Change(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure SpinEdit2Change(Sender: TObject);
+    procedure ComboBox1Change(Sender: TObject);
+    procedure ComboBox1Exit(Sender: TObject);
+    procedure StringGrid2SelectCell(Sender: TObject; ACol, ARow: Integer;
+      var CanSelect: Boolean);
+    procedure Button1Click(Sender: TObject);
+    procedure ComboBox3Change(Sender: TObject);
+    procedure StringGrid2SetEditText(Sender: TObject; ACol, ARow: Integer;
+      const Value: String);
+    procedure StringGrid1SetEditText(Sender: TObject; ACol, ARow: Integer;
+      const Value: String);
+    procedure ComboBox2Change(Sender: TObject);
+  private
+    kol_x : Integer; //переменная количества неизвестный целевой функции
+    kol_ogranich : Integer; //переменная для количества ограничений
+    matrix : array of array of Double; //основная матрица
+    function proverka_optinal(naprav:string):Integer; //Функция проверки и поиска максимального индекса
+    function poisk_vivod_bazis(vvod_index : Integer):Integer; //функция поиска выводимого базиса
+    procedure clear_result; //процедура очистки значений результата
+  public
+    { Public declarations }
+  end;
+
+var
+  Form1: TForm1;
+
+implementation
+
+{$R *.dfm}
+
+procedure TForm1.SpinEdit1Change(Sender: TObject);
+var
+  i : Integer; //переменная для цикла заголовка
+begin
+  kol_X := SpinEdit1.Value;  //получаем количество
+
+  StringGrid1.ColCount := kol_X;  //устанавливаем размерность таблицы целевой функции
+  StringGrid2.ColCount := kol_X+2;  //устанавливаем размерность таблицы ограничений + знак + значение
+  StringGrid3.ColCount := kol_X;  //устанавливаем размерность таблицы результата
+
+  for i := 0 to kol_X - 1 do
+   Begin
+    StringGrid1.Cells[i,0] := 'X' + IntToStr(i+1); //заголовок в таблице целевой функции
+    StringGrid2.Cells[i,0] := 'X' + IntToStr(i+1); //заголовок в таблице ограничений
+    StringGrid3.Cells[i,0] := 'X' + IntToStr(i+1); //заголовок в таблице результата
+   End;
+
+  StringGrid2.Cells[kol_X,0] := 'знак';
+  StringGrid2.Cells[kol_X + 1,0] := 'значение';
+
+  clear_result;
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+begin
+  StringGrid2.DefaultRowHeight := ComboBox1.Height; //Устанавливаем высота ячейки таблицы ограничений равной высоте ComboBox1
+  ComboBox1.Visible := False;  //делаем его не видимым
+
+  //заполняем возможными/допустимыми значениями
+  ComboBox1.Items.Add('>');
+  ComboBox1.Items.Add('>=');
+  ComboBox1.Items.Add('=');
+  ComboBox1.Items.Add('<');
+  ComboBox1.Items.Add('<=');
+
+  ComboBox3.ItemIndex := 0;
+  ComboBox3Change(Self);
+end;
+
+procedure TForm1.SpinEdit2Change(Sender: TObject);
+begin
+  kol_ogranich := SpinEdit2.Value; //получаем количество
+
+  StringGrid2.RowCount := kol_ogranich + 1; //устанавливаем количество строк + 1 для заголовка
+
+  clear_result;
+end;
+
+procedure TForm1.ComboBox1Change(Sender: TObject);
+begin
+  //Получаем значение выбраное в ComboBox и помещаем в Grid
+  StringGrid2.Cells[StringGrid2.Col, StringGrid2.Row] := ComboBox1.Items[ComboBox1.ItemIndex];
+  ComboBox1.Visible := False;
+  StringGrid2.SetFocus;
+end;
+
+procedure TForm1.ComboBox1Exit(Sender: TObject);
+begin
+  //Получаем значение выбраное в ComboBox и помещаем в Grid
+  StringGrid2.Cells[StringGrid2.Col, StringGrid2.Row] := ComboBox1.Items[ComboBox1.ItemIndex];
+  ComboBox1.Visible := False;
+  StringGrid2.SetFocus;
+end;
+
+procedure TForm1.StringGrid2SelectCell(Sender: TObject; ACol,
+  ARow: Integer; var CanSelect: Boolean);
+var
+  R: TRect;
+begin
+  if ((aCol = kol_x) AND (aRow <> 0)) then //определяем что выбран нужный столбец и не заголовок
+   begin
+    //размер и расположение ComboBox подгоняем под ячейку
+    R := StringGrid2.CellRect(aCol, aRow);
+    R.Left := R.Left + StringGrid2.Left;
+    R.Right := R.Right + StringGrid2.Left;
+    R.Top := R.Top + StringGrid2.Top;
+    R.Bottom := R.Bottom + StringGrid2.Top;
+    ComboBox1.Left := R.Left + 1;
+    ComboBox1.Top := R.Top + 1;
+    ComboBox1.Width := (R.Right + 1) - R.Left;
+    ComboBox1.Height := (R.Bottom + 1) - R.Top;
+    //показываем combobox
+    ComboBox1.Visible := True;
+    ComboBox1.SetFocus;
+   end;
+  CanSelect := True;
+end;
+
+procedure TForm1.Button1Click(Sender: TObject);
+var
+  basiz : array of Integer; //массив номеров базиса
+  opor_plan : array of Double; //массив опорного плана
+  znach_cell : string; //буферная переменная для оптимизации работы
+  znach_F : Double; //переменная значения функции
+  vvod_index : Integer; //индекс вводимого х в базис
+  vivod_index : Integer; //индекс выводимого х из базиса
+  min_max : string; //признак поиска мах или мин значения
+  i, j : Integer;
+  buff : Double;
+begin
+  //------------Проверка ограничений на отрицательность свободных элементов-----
+  for i := 1 to kol_ogranich do
+   if StrToFloat(StringGrid2.Cells[kol_x + 1, i]) < 0 then  //есть отрицательное
+    Begin
+     //показываем сообщение об корректировке
+     Label6.Visible := True;
+     Label7.Visible := True;
+     
+     //корректируем строку перемножаем на -1 и меняем знак
+     for j := 0 to kol_x + 1 do
+      if j <> kol_x
+       then StringGrid2.Cells[j, i] := FloatToStr(StrToFloat(StringGrid2.Cells[j, i]) * -1)
+       else
+        Begin
+         znach_cell := StringGrid2.Cells[j, i];
+         if znach_cell = '<=' then StringGrid2.Cells[j, i] := '>=';
+         if znach_cell = '<' then StringGrid2.Cells[j, i] := '>';
+         if znach_cell = '>=' then StringGrid2.Cells[j, i] := '<=';
+         if znach_cell = '>' then StringGrid2.Cells[j, i] := '<';
+        End;
+    end;
+
+  //--------------------формирование начальный данных---------------------------
+  SetLength(matrix, kol_ogranich + 1, kol_x + (2 * kol_ogranich) + 1);  //размер массива столбцы и строки
+  //очищаем
+  for i := 0 to kol_ogranich do
+  for j := 0 to kol_x + (2 * kol_ogranich) do matrix[i, j] := 0;
+
+  SetLength(basiz, kol_ogranich); //размер массива базисов
+  //очищаем
+  for i := 0 to kol_ogranich - 1 do basiz[i] := 0;
+
+  SetLength(opor_plan, kol_x + (2 * kol_ogranich)); //размер массива опорного плана
+  //очищаем
+  for i:=0 to kol_x + kol_ogranich - 1 do opor_plan[i] := 0;
+  
+  //основные коэфициенты
+  for i := 0 to kol_x do //цикл по столбцам
+   begin
+    for j := 0 to kol_ogranich - 1 do //цикл по строкам
+     begin
+      if (i = 0)
+       then matrix[j, i] := StrToFloat(StringGrid2.Cells[kol_x + 1, j + 1])
+       else matrix[j, i] := StrToFloat(StringGrid2.Cells[i - 1, j + 1]);
+     end;
+   end;
+
+   //привидение к кононическому виду
+   for j := 0 to kol_ogranich - 1 do //цикл по строкам
+    begin
+      znach_cell := StringGrid2.Cells[kol_x, j + 1]; //присваеваем буферной переменной значение из столбца не равенства
+
+     if ((znach_cell = '<') or (znach_cell = '<='))
+      then
+       Begin
+        matrix[j, kol_x + j + 1] := 1;
+        //basiz[j] := kol_x + j + 1; //записываем индекс неизвестной переменной участвующей в базисе
+       end;
+
+     if ((znach_cell = '>') or (znach_cell = '>='))
+      then matrix[j, kol_x + j + 1] := -1;
+    end;
+
+   //добавляем единичную матрицу
+   for j := 0 to kol_ogranich - 1 do
+    begin
+     matrix[j, kol_x + kol_ogranich + 1 + j] := 1;
+     basiz[j] := kol_x + kol_ogranich + j + 1; //записываем индекс неизвестной переменной участвующей в базисе
+    End; 
+
+   //----------формирование индексов функции и опорного плана-------------------
+   //опорный план и значение функции
+   znach_F := 0;
+   for j := 0 to kol_x + (2 * kol_ogranich) - 1 do
+    Begin
+     for i := 0 to kol_ogranich - 1 do
+       if ((j + 1) = basiz[i]) then opor_plan[j] := matrix[i, 0]; //в опорный план отправляем значение свободного элемента
+
+     if (j < kol_x)
+      then znach_cell := StringGrid1.Cells[j, 1] //в буферную переменную отправляем значения при х из целефой функции
+      else znach_cell := '0';
+
+     znach_F := znach_F + (StrToFloat(znach_cell) * opor_plan[j]); //подсчитываем значение функции
+
+     //формирование индексов функции
+     matrix[kol_ogranich, j + 1] := StrToFloat(znach_cell) * (-1);
+    end;
+
+   matrix[kol_ogranich, 0] := znach_F; //переносим значение в основную матрицу
+   //---------конец формирование индексов функции и опорного плана--------------
+   //--------------------------конец формирования начальных данных--------------
+
+   //---------Поиск оптимального плана------------------------------------------
+   if (ComboBox2.ItemIndex = 0)
+    then min_max := 'min'
+    else min_max := 'max';//поиск минимального
+
+   //проверка наличия максимально положетельного или отрецательного значений в индексе функции
+   vvod_index := proverka_optinal(min_max);
+   while vvod_index <> 0 do
+    Begin
+     //поиск выводимого базиса
+     vivod_index := poisk_vivod_bazis(vvod_index);
+
+     //делим строку на значение которое находится на пересечении
+     buff := matrix[vivod_index, vvod_index];
+     for j := 0 to kol_x + (2 * kol_ogranich) do
+      matrix[vivod_index, j] := matrix[vivod_index, j] / buff;
+
+     //от всех строк отнимаем ввыводимую умноженную на элемент на пересечении вводимого и отнимаемого
+     for i := 0 to kol_ogranich do
+      Begin
+       if (i <> (vivod_index)) then
+        Begin
+         buff := matrix[i, vvod_index] * (-1);
+         For j := 0 to kol_x + (2 * kol_ogranich) do
+          Begin
+           matrix[i, j] := matrix[i, j] + (matrix[vivod_index, j] * buff);
+          end;
+        end;
+      end;
+
+     //изменить базис
+     basiz[vivod_index] := vvod_index;
+
+     //проверяем на оптимальность
+     vvod_index := proverka_optinal(min_max);
+    end;
+
+   //вывод оптимальных значений и значение целевой функции
+   for i := 1 to kol_x do
+    Begin
+     StringGrid3.Cells[i - 1, 1] := '0';
+     for j := 0 to kol_ogranich - 1 do
+      if basiz[j] = i then StringGrid3.Cells[i - 1, 1] := FloatToStr(matrix[j, 0]);
+    end;
+    
+   buff := matrix[kol_ogranich, 0];
+   Edit1.Text := FloatToStr(buff);
+  //---------Конец поиска оптимального плана-----------------------------------
+end;
+
+function TForm1.proverka_optinal(naprav: string): Integer;
+var
+  j : Integer; //переменная цикла
+  max, min : Double; //максимальное или минимальное значение
+  index : Integer; //индекс х принимающего мак или мин
+  buff : Double; //буферная переменная для ускорения работы
+begin
+  max := 0; min := 0; index := 0;
+  if naprav = 'min' then //ищем максимальное положительное
+   for j := 1 to kol_x + (2 * kol_ogranich) do
+    Begin
+     buff := matrix[kol_ogranich, j];
+     if ((buff > 0) and (buff > max))
+      then
+       Begin
+        max := matrix[kol_ogranich, j];
+        index := j;
+       end;
+    End;
+
+  if naprav = 'max' then //ищем максимальное отрицательное
+   for j := 1 to kol_x + (2 * kol_ogranich) do
+    Begin
+     buff := matrix[kol_ogranich, j];
+     if ((buff < 0) and (buff < min))
+      then
+       Begin
+        min := matrix[kol_ogranich, j];
+        index := j;
+       end;
+    End;
+    
+  Result := index;
+end;
+
+function TForm1.poisk_vivod_bazis(vvod_index: Integer): Integer;
+var
+  i : Integer; //перемменная цикла
+  min : Double; //переменная минимального значения
+  index : integer; //переменная индекса выводимого базиса
+begin
+  Min := -1; i := 0;
+  while min = -1 do
+   begin
+    if matrix[i, vvod_index] > 0
+     then min := matrix[i, 0]/matrix[i, vvod_index]; //присваиваем первое значение для уверености правоты поиска
+    i := i + 1; 
+   end;
+   
+  index := i - 1;
+  For i := 0 to kol_ogranich - 1 do
+   begin
+    if matrix[i, vvod_index] > 0 then
+     if ((matrix[i, 0]/matrix[i, vvod_index]) < min)
+      then
+       begin
+        min := matrix[i, 0]/matrix[i, vvod_index];
+        index := i;
+       end;
+   end;
+
+  Result := index; 
+end;
+
+procedure TForm1.ComboBox3Change(Sender: TObject);
+begin
+  if ComboBox3.ItemIndex = 0 then
+   Begin
+    //Проверочные/начальные/демонстрационные значения Пример 1
+    SpinEdit1.Value := 2;
+    SpinEdit2.Value := 3;
+    ComboBox2.ItemIndex := 0;
+    StringGrid1.Cells[0,1] := '10';
+    StringGrid1.Cells[1,1] := '-15';
+
+    StringGrid2.Cells[0,1] := '-1';
+    StringGrid2.Cells[1,1] := '1';
+    StringGrid2.Cells[2,1] := '<=';
+    StringGrid2.Cells[3,1] := '2';
+    //--
+    StringGrid2.Cells[0,2] := '-1';
+    StringGrid2.Cells[1,2] := '3';
+    StringGrid2.Cells[2,2] := '<=';
+    StringGrid2.Cells[3,2] := '10';
+    //--
+    StringGrid2.Cells[0,3] := '5';
+    StringGrid2.Cells[1,3] := '1';
+    StringGrid2.Cells[2,3] := '<=';
+    StringGrid2.Cells[3,3] := '30';
+
+    SpinEdit1Change(Self);
+    SpinEdit2Change(Self);
+
+    clear_result;
+   end;
+
+  if ComboBox3.ItemIndex = 1 then
+   Begin
+    SpinEdit1.Value := 3;
+    SpinEdit2.Value := 3;
+    ComboBox2.ItemIndex := 1;
+    StringGrid1.Cells[0,1] := '3';
+    StringGrid1.Cells[1,1] := '5';
+    StringGrid1.Cells[2,1] := '4';
+
+    StringGrid2.Cells[0,1] := '0,1';
+    StringGrid2.Cells[1,1] := '0,2';
+    StringGrid2.Cells[2,1] := '0,4';
+    StringGrid2.Cells[3,1] := '<=';
+    StringGrid2.Cells[4,1] := '1100';
+    //--
+    StringGrid2.Cells[0,2] := '0,05';
+    StringGrid2.Cells[1,2] := '0,02';
+    StringGrid2.Cells[2,2] := '0,02';
+    StringGrid2.Cells[3,2] := '<=';
+    StringGrid2.Cells[4,2] := '120';
+    //--
+    StringGrid2.Cells[0,3] := '3';
+    StringGrid2.Cells[1,3] := '1';
+    StringGrid2.Cells[2,3] := '2';
+    StringGrid2.Cells[3,3] := '<=';
+    StringGrid2.Cells[4,3] := '8000';
+
+    SpinEdit1Change(Self);
+    SpinEdit2Change(Self);
+
+    clear_result;
+   end;
+
+  if ComboBox3.ItemIndex = 2 then
+   Begin
+    SpinEdit1.Value := 2;
+    SpinEdit2.Value := 3;
+    ComboBox2.ItemIndex := 1;
+    StringGrid1.Cells[0,1] := '3';
+    StringGrid1.Cells[1,1] := '4';
+
+    StringGrid2.Cells[0,1] := '1';
+    StringGrid2.Cells[1,1] := '1';
+    StringGrid2.Cells[2,1] := '<=';
+    StringGrid2.Cells[3,1] := '550';
+    //--
+    StringGrid2.Cells[0,2] := '2';
+    StringGrid2.Cells[1,2] := '3';
+    StringGrid2.Cells[2,2] := '<=';
+    StringGrid2.Cells[3,2] := '1200';
+    //--
+    StringGrid2.Cells[0,3] := '12';
+    StringGrid2.Cells[1,3] := '30';
+    StringGrid2.Cells[2,3] := '<=';
+    StringGrid2.Cells[3,3] := '9600';
+
+    SpinEdit1Change(Self);
+    SpinEdit2Change(Self);
+
+    clear_result;
+   end;
+
+  if ComboBox3.ItemIndex = 3 then
+   Begin
+    SpinEdit1.Value := 2;
+    SpinEdit2.Value := 4;
+    ComboBox2.ItemIndex := 1;
+    StringGrid1.Cells[0,1] := '1';
+    StringGrid1.Cells[1,1] := '2';
+
+    StringGrid2.Cells[0,1] := '1';
+    StringGrid2.Cells[1,1] := '2';
+    StringGrid2.Cells[2,1] := '>=';
+    StringGrid2.Cells[3,1] := '2';
+    //--
+    StringGrid2.Cells[0,2] := '1';
+    StringGrid2.Cells[1,2] := '1';
+    StringGrid2.Cells[2,2] := '>=';
+    StringGrid2.Cells[3,2] := '4';
+    //--
+    StringGrid2.Cells[0,3] := '1';
+    StringGrid2.Cells[1,3] := '-1';
+    StringGrid2.Cells[2,3] := '<=';
+    StringGrid2.Cells[3,3] := '2';
+    //--
+    StringGrid2.Cells[0,4] := '0';
+    StringGrid2.Cells[1,4] := '1';
+    StringGrid2.Cells[2,4] := '<=';
+    StringGrid2.Cells[3,4] := '6';
+
+    SpinEdit1Change(Self);
+    SpinEdit2Change(Self);
+
+    clear_result;
+   end; 
+end;
+
+procedure TForm1.clear_result;
+var
+  i : Integer;
+begin
+  for i := 0 to kol_x - 1 do StringGrid3.Cells[i, 1] := '';
+  Edit1.Text := '';
+
+  //скрываем сообщение о коррекции
+  Label6.Visible := false;
+  Label7.Visible := false;
+end;
+
+procedure TForm1.StringGrid2SetEditText(Sender: TObject; ACol,
+  ARow: Integer; const Value: String);
+begin
+  clear_result;
+end;
+
+procedure TForm1.StringGrid1SetEditText(Sender: TObject; ACol,
+  ARow: Integer; const Value: String);
+begin
+  clear_result;
+end;
+
+procedure TForm1.ComboBox2Change(Sender: TObject);
+begin
+  clear_result;
+end;
+
+end.
